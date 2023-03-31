@@ -4,10 +4,10 @@
 #include <stdio.h>
 
 class Ekf2;
-std::ifstream read1("../data/imu_data.txt");
-std::ifstream read2("data/gps_data.txt");
-std::ifstream read3("../data/mag_data.txt");
-std::ifstream read4("../data/baro_data.txt");
+std::ifstream read1("../data1/imu_data.txt");
+std::ifstream read2("data1/gps_data.txt");
+std::ifstream read3("../data1/mag_data.txt");
+std::ifstream read4("../data1/baro_data.txt");
 std::ofstream euler_estimator("../results/euler_estimator.txt");
 std::ofstream position_estimator("../results/position_estimator.txt");
 
@@ -48,9 +48,9 @@ void Ekf2::task_main()
 	float accelerometer_integral_dt = 0;
 	float last_IMUtime = 0;
     float now = 0;
-    double gps_time_ms, lat, lon, alt;
-    double mag_time_ms_read, magx, magy, magz;
-    double baro_time_ms_read, baroHeight, baroHeight_origin = 0.0f;
+    double gps_time_us, lat, lon, alt, fix_type, eph, epv, s_variance_m_s, vel_m_s, vel_n_m_s, vel_e_m_s, vel_d_m_s, vel_ned_valid, satellites_used;
+    double mag_time_us_read, magx, magy, magz;
+    double baro_time_us_read, baroHeight, baroHeight_origin = 0.0f;
 
 	//while (!_task_should_exit && !read1.eof() && !read2.eof() && !read3.eof() && !read4.eof()) {
 	while (!_task_should_exit && !read1.eof() &&  !read3.eof() && !read4.eof()) {
@@ -64,20 +64,18 @@ void Ekf2::task_main()
 		// long gyro_integral_dt = 0.01;
 		// // in replay mode we are getting the actual timestamp from the sensor topic
 			
-		read1 >> now;	//ms
-		float temp;
-		read1 >> temp;	
-		now *= 1.e3f;	//us
-		//printf("time now: %lf\n", now);
-		gyro_integral_dt = now - last_IMUtime;	//us
-		gyro_integral_dt /= 1.e6f;	//s
-		accelerometer_integral_dt = now - last_IMUtime;
-		accelerometer_integral_dt /=1.e6f;
+		read1 >> now;	//us
 
 		// // push imu data into estimator
 		float gyro_integral[3],gyro_rad[3];
 		read1 >> gyro_rad[0];	read1 >> gyro_rad[1];	read1 >> gyro_rad[2];
 		//printf("gyro:%lf,%lf,%lf,%lf s\n", gyro_rad[0], gyro_rad[1], gyro_rad[2],gyro_integral_dt);
+
+		read1 >> gyro_integral_dt;
+		gyro_integral_dt /= 1.e6f;	//s
+
+		float temp;
+		read1 >> temp;	
 
 		gyro_integral[0] = gyro_rad[0] * gyro_integral_dt;
 		gyro_integral[1] = gyro_rad[1] * gyro_integral_dt;
@@ -86,6 +84,10 @@ void Ekf2::task_main()
 		float accel_integral[3],accelerometer_m_s2[3];
 		read1 >> accelerometer_m_s2[0];	read1 >> accelerometer_m_s2[1];	read1 >> accelerometer_m_s2[2];
 		//printf("accelerometer_m_s2:%lf,%lf,%lf\n", accelerometer_m_s2[0], accelerometer_m_s2[1], accelerometer_m_s2[2]);
+
+		read1 >> accelerometer_integral_dt;
+		accelerometer_integral_dt /=1.e6f;
+
 		accel_integral[0] = accelerometer_m_s2[0] * accelerometer_integral_dt;
 		accel_integral[1] = accelerometer_m_s2[1] * accelerometer_integral_dt;
 		accel_integral[2] = accelerometer_m_s2[2] * accelerometer_integral_dt;
@@ -95,23 +97,23 @@ void Ekf2::task_main()
 
 		if(bReadMag)
 		{
-			read3 >> mag_time_ms_read;	//ms
-			float temp; read3>>temp;
+			read3 >> mag_time_us_read;	//us
+			// float temp; read3>>temp;read3>>temp;
 			read3 >> magx;
 			read3 >> magy;
 			read3 >> magz;
 			//magx /= 100.0f;magy /= 100.0f;magz /= 100.0f;
-			read3>>temp;read3>>temp;read3>>temp;
+			// read3>>temp;
 			bReadMag = false;		
 		}
-		if(mag_time_ms_read * 1.e3f < now)
+		if(mag_time_us_read  < now)
 		{
 			mag_updated = true;
 			bReadMag = true;
 		}
 		if(mag_updated)
 		{
-			_timestamp_mag_us = mag_time_ms_read * 1.e3f;
+			_timestamp_mag_us = mag_time_us_read ;
 
 			// If the time last used by the EKF is less than specified, then accumulate the
 			// data and push the average when the 50msec is reached.
@@ -126,7 +128,7 @@ void Ekf2::task_main()
 				float mag_sample_count_inv = 1.0f / (float)_mag_sample_count;
 				float mag_data_avg_ga[3] = {_mag_data_sum[0] *mag_sample_count_inv, _mag_data_sum[1] *mag_sample_count_inv, _mag_data_sum[2] *mag_sample_count_inv};
 				_ekf.setMagData(1000 * (uint64_t)mag_time_ms, mag_data_avg_ga);
-				//printf("mag: %f %f %d %f %f %f\n",now,mag_time_ms_read,mag_time_ms,
+				//printf("mag: %f %f %d %f %f %f\n",now,mag_time_us_read,mag_time_ms,
 				//		_mag_data_sum[0],_mag_data_sum[1],_mag_data_sum[2]);
 				_mag_time_ms_last_used = mag_time_ms;
 				_mag_time_sum_ms = 0;
@@ -140,25 +142,24 @@ void Ekf2::task_main()
 
 		if(bReadBaro)
 		{
-			read4 >> baro_time_ms_read;	//ms
-			float temp; read4>>temp;
-			read4>>temp;read4>>temp;read4>>temp;read4>>temp;read4>>temp;read4>>temp;
+			read4 >> baro_time_us_read;	//us
 			read4 >> baroHeight ;
-			read4>>temp;
-			baroHeight /= 2.0f;
+			float temp; 
+			read4>>temp;read4>>temp;read4>>temp;
+			// baroHeight /= 2.0f;
 			// if(baroHeight_origin == 0)
 			// 	baroHeight_origin = baroHeight;
 			// baroHeight -= baroHeight_origin;
 			bReadBaro= false;		
 		}
-		if(baro_time_ms_read *1.e3f <now)
+		if(baro_time_us_read  <now)
 		{
 			baro_updated = true;
 			bReadBaro = true;
 		}
 		if(baro_updated)
 		{
-				_timestamp_balt_us = baro_time_ms_read*1.e3f;
+				_timestamp_balt_us = baro_time_us_read;
 
 				// If the time last used by the EKF is less than specified, then accumulate the
 				// data and push the average when the 50msec is reached.
@@ -169,7 +170,7 @@ void Ekf2::task_main()
 
 				if (balt_time_ms - _balt_time_ms_last_used > (uint32_t)_params->sensor_interval_min_ms) {
 					float balt_data_avg = _balt_data_sum / (float)_balt_sample_count;
-				//printf("baro: %f %f %d %f\n",now,baro_time_ms_read,balt_time_ms,
+				//printf("baro: %f %f %d %f\n",now,baro_time_us_read,balt_time_ms,
 				//		balt_data_avg);					
 					_ekf.setBaroData(1000 * (uint64_t)balt_time_ms, balt_data_avg);
 					_balt_time_ms_last_used = balt_time_ms;
@@ -182,15 +183,22 @@ void Ekf2::task_main()
 
 		if(bReadGPS)
 		{
-			read2 >> gps_time_ms;	//ms
-			float temp1; read2>>temp1;read2>>temp1;read2>>temp1;read2>>temp1;read2>>temp1;	
+			read2 >> gps_time_us;	//us
+			float temp1; read2>>temp1;
 			read2 >> lat;
 			read2 >> lon;
-			read2 >> alt;read2 >> alt;
+			read2 >> alt;
+			read2>>temp1;
+			read2>>s_variance_m_s;read2>>temp1;read2>>eph;read2>>epv;
 			read2>>temp1;read2>>temp1;read2>>temp1;read2>>temp1;
+			read2 >> vel_m_s;
+			read2>>vel_n_m_s;read2>>vel_e_m_s;read2>>vel_d_m_s;
+			read2>>temp1;read2>>temp1;
+			read2>>fix_type;read2>>vel_ned_valid;
+			read2>>satellites_used;
 			bReadGPS = false;		
 		}
-		if(gps_time_ms * 1.e3f < now)
+		if(gps_time_us   < now)
 		{
 			gps_updated = true;
 			bReadGPS = true;
@@ -198,22 +206,22 @@ void Ekf2::task_main()
 		if(gps_updated)
 		{
 			struct gps_message gps_msg = {};
-			gps_msg.time_usec = (uint64_t)(gps_time_ms * 1.e3f);
-			gps_msg.lat = (int32_t)(lat * 1.e7f);
-			gps_msg.lon = (int32_t)(lon * 1.e7f);
-			gps_msg.alt = (int32_t)(alt * 1.e3f);
+			gps_msg.time_usec = gps_time_us;
+			gps_msg.lat = lat;
+			gps_msg.lon = lon;
+			gps_msg.alt = alt;
 			//printf("time now: %lf\n", now);
 			//printf("gps: %ld, %d, %d, %d\n",gps_msg.time_usec,gps_msg.lat,gps_msg.lon,gps_msg.alt);
-			gps_msg.fix_type = 3;
-			gps_msg.eph = 0.3;
-			gps_msg.epv = 0.4;
-			gps_msg.sacc = 0;
-			gps_msg.vel_m_s = 0;
-			gps_msg.vel_ned[0] = 0;	//no gps ned vel
-			gps_msg.vel_ned[1] = 0;
-			gps_msg.vel_ned[2] = 0;
-			gps_msg.vel_ned_valid = 1;
-			gps_msg.nsats = 8;
+			gps_msg.fix_type = fix_type;
+			gps_msg.eph = eph;
+			gps_msg.epv = epv;
+			gps_msg.sacc = s_variance_m_s;
+			gps_msg.vel_m_s = vel_m_s;
+			gps_msg.vel_ned[0] = vel_n_m_s;	//no gps ned vel
+			gps_msg.vel_ned[1] = vel_e_m_s;
+			gps_msg.vel_ned[2] = vel_d_m_s;
+			gps_msg.vel_ned_valid = vel_ned_valid;
+			gps_msg.nsats = satellites_used;
 			//TODO add gdop to gps topic
 			gps_msg.gdop = 0.0f;
 
@@ -255,8 +263,8 @@ void Ekf2::task_main()
 				float position[3];
 				_ekf.get_position(position);
 				//printf("position: %lf,%lf,%lf\n", position[0], position[1], position[2]);
-				position_estimator<< now/1.e6f <<" "<<position[0] <<" "<<position[1] - 0.278398 <<" "
-				<<-position[2] + 0.0849676 <<" "<<std::endl;
+				position_estimator<< now <<" "<<position[0] <<" "<<position[1] <<" "
+				<<-position[2] <<" "<<std::endl;
 				// Attitude quaternion
 				//q.copyTo(ctrl_state.q);
 
@@ -301,7 +309,7 @@ void Ekf2::task_main()
 			// The rotation of the tangent plane vs. geographical north
 			matrix::Eulerf euler(q);
 			//printf("euler: %f  %f  %f\n", euler.phi(),euler.theta(),euler.psi());
-				euler_estimator<< now/1.e6f <<" "<<euler.phi() <<" "<<euler.theta() <<" "
+				euler_estimator<< now <<" "<<euler.phi() <<" "<<euler.theta() <<" "
 				<<euler.psi() <<" "<<std::endl;			
 			// TODO: uORB definition does not define what these variables are. We have assumed them to be horizontal and vertical 1-std dev accuracy in metres
 			Vector3f pos_var, vel_var;

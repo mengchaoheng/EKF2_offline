@@ -45,7 +45,7 @@ set(CMAKE_CXX_FLAGS "-DPOSIX_SHARED")
 #	message( FATAL_ERROR "Eigen3 not found.")
 #endif()
 
-if( NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../matrix/.git" )
+if( NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../matrix" )
 message( SEND_ERROR "The git submodules are not available. Please run
 git submodule update --init --recursive"
 )
