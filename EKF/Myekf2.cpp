@@ -8,8 +8,13 @@ std::ifstream read1("../data1/imu_data.txt");
 std::ifstream read2("data1/gps_data.txt");
 std::ifstream read3("../data1/mag_data.txt");
 std::ifstream read4("../data1/baro_data.txt");
+// std::ifstream read1("../data1/imu.txt");
+// std::ifstream read2("data1/gps.txt");
+// std::ifstream read3("../data1/mag.txt");
+// std::ifstream read4("../data1/baro.txt");
 std::ofstream euler_estimator("../results/euler_estimator.txt");
 std::ofstream position_estimator("../results/position_estimator.txt");
+std::ofstream velocity_estimator("../results/velocity_estimator.txt");
 
 bool bReadGPS, bReadMag, bReadBaro;
 
@@ -242,6 +247,8 @@ void Ekf2::task_main()
 			float velocity[3];
 			_ekf.get_velocity(velocity);
 			//printf("velocity: %lf,%lf,%lf\n", velocity[0], velocity[1], velocity[2]);
+			velocity_estimator<< now <<" "<<velocity[0] <<" "<<velocity[1] <<" "
+            <<-velocity[2] <<" "<<std::endl;
 
 			float gyro_rad[3];
 
